@@ -17,6 +17,7 @@ from meeting_discovery import discover_latest_council_meetings
 
 OUTPUT_FOLDER = os.path.join(os.path.dirname(__file__), 'council_docs')
 RUN_LOG = os.path.join(os.path.dirname(__file__), 'run_log.txt')
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'council_scraper.log')
 
 
 def setup_logging():
@@ -24,7 +25,7 @@ def setup_logging():
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('council_scraper.log', encoding='utf-8'),
+            logging.FileHandler(LOG_FILE, encoding='utf-8'),
             logging.StreamHandler(),
         ],
     )
@@ -76,7 +77,9 @@ def main():
         title = meeting.get('title', 'Unknown')
         logger.info('[SCHEDULED] Considering: ' + title)
 
-        sanitised = scraper.sanitize_folder_name(title)
+        live_title = scraper.extract_meeting_title_from_url(url)
+        effective_title = live_title if live_title else title
+        sanitised = scraper.sanitize_folder_name(effective_title)
         folder_path = os.path.join(OUTPUT_FOLDER, sanitised)
 
         if not args.force and scraper.is_already_scraped(folder_path):
