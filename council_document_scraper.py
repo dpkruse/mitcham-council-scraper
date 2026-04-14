@@ -70,26 +70,33 @@ class CouncilDocumentScraper:
 
     def sanitize_folder_name(self, folder_name):
         """Sanitize folder name for filesystem compatibility"""
-        
+
         self.logger.debug(f"[SANITIZE] Input folder name: '{folder_name}'")
-        
+
         # Remove or replace invalid filesystem characters
         sanitized = re.sub(r'[<>:"/\\|?*]', '-', folder_name)
-        
+
         # Remove leading/trailing spaces and dots
         sanitized = sanitized.strip(' .')
-        
+
         # Limit length to avoid filesystem limits
         if len(sanitized) > 200:
             sanitized = sanitized[:197] + "..."
-        
+
         # Ensure it's not empty
         if not sanitized:
             sanitized = "Council_Meeting"
-        
+
         self.logger.debug(f"[SANITIZE] Output folder name: '{sanitized}'")
         return sanitized
-    
+
+    def is_already_scraped(self, meeting_folder_path):
+        """Return True if meeting_folder_path already contains at least one PDF."""
+        if not os.path.isdir(meeting_folder_path):
+            return False
+        pdfs = [f for f in os.listdir(meeting_folder_path) if f.lower().endswith('.pdf')]
+        return len(pdfs) > 0
+
     def scrape_agenda(self, agenda_url, meeting_date=None, use_selenium=True):
         """Main scraping function using three-stage approach"""
         try:
