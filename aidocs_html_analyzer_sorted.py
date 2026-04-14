@@ -6,6 +6,13 @@ import sys
 import urllib.parse
 
 class AidocsHtmlAnalyzerSorted:
+    _EXCLUDED_LABELS = {
+        'report',
+        'information only report',
+        'corro / resolution report',
+        'cover page',
+    }
+
     def __init__(self):
         self.major_items = []
         self.individual_items = []
@@ -114,9 +121,23 @@ class AidocsHtmlAnalyzerSorted:
         self.all_genfile_links.sort(key=lambda x: x['ad_value'])
     
     def is_supporting_document(self, link_text):
-        """Identify supporting documents based on text characteristics"""
-        text_lower = link_text.lower()
-        return 'supporting document' in text_lower
+        """Return True for supplementary/attachment docs; False for bare report labels.
+
+        Matches:
+          - Any text starting with 'attachment'
+          - Any text containing 'supporting document'
+          - Any text containing 'supplementary'
+        Excludes:
+          - 'Report', 'Information Only Report', 'Corro / Resolution Report', 'Cover Page'
+        """
+        text_lower = link_text.lower().strip()
+        if text_lower in self._EXCLUDED_LABELS:
+            return False
+        return (
+            text_lower.startswith('attachment') or
+            'supporting document' in text_lower or
+            'supplementary' in text_lower
+        )
     
     def propagate_major_numbers_to_individuals(self, items):
         """Propagate major item numbers to following individual items and clean up text"""
