@@ -7,6 +7,7 @@ Combines downloaded supporting-document PDFs into a single file with:
 - A clickable link to the full meeting agenda
 """
 import io
+import logging
 import os
 import re
 from collections import OrderedDict
@@ -15,6 +16,9 @@ from datetime import datetime
 from pypdf import PdfWriter, PdfReader
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib.pagesizes import A4
+
+
+logger = logging.getLogger(__name__)
 
 
 def _display_title(entry):
@@ -212,7 +216,8 @@ def combine_pdfs(pdf_entries, output_path, meeting_title, run_date=None, meeting
         current_page += 1  # cover page
         try:
             current_page += len(PdfReader(entry['filepath']).pages)
-        except Exception:
+        except Exception as e:
+            logger.warning(f'[COMBINER] Could not read page count for {entry["filepath"]}: {e}')
             current_page += 1
 
     # --- Build index page ---
@@ -251,7 +256,8 @@ def combine_pdfs(pdf_entries, output_path, meeting_title, run_date=None, meeting
             for page in doc_pages:
                 writer.add_page(page)
             page_idx += len(doc_pages)
-        except Exception:
+        except Exception as e:
+            logger.warning(f'[COMBINER] Could not read pages from {entry["filepath"]}: {e}')
             page_idx += 1
 
     # --- PDF bookmarks (outline) ---
