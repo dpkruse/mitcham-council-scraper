@@ -4,6 +4,8 @@ Automatically downloads separately-uploaded supporting documents from
 [Mitcham Council](https://www.mitchamcouncil.sa.gov.au) meeting agendas
 published on the CivicClerk portal.
 
+![Sample combined PDF index page](sample%20Screenshot%202026-04-15%20180405.png)
+
 ## What it does
 
 1. Fetches the AIDocs HTML for a council meeting agenda
