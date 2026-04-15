@@ -51,7 +51,8 @@ def parse_meeting_links(html: str, base_url: str = CIVICCLERK_PORTAL) -> list[di
         if 'full council' not in title.lower():
             return
         seen_ids.add(meeting_id)
-        url = urljoin(base_url, f'Player.aspx?id={meeting_id}&key=-1&mod=-1&mk=-1&nov=0')
+        base = base_url.rstrip('/')
+        url = f'{base}/Player.aspx?id={meeting_id}&key=-1&mod=-1&mk=-1&nov=0'
         results.append({'title': title, 'url': url, 'meeting_id': meeting_id})
 
     # Pattern 1: onclick="LaunchPlayer(...)" or onclick="javascript:LaunchPlayer(...)"
@@ -106,6 +107,11 @@ def _load_from_config() -> list[dict]:
         valid = []
         for entry in entries:
             if all(k in entry for k in ('title', 'url', 'meeting_id')):
+                try:
+                    entry['meeting_id'] = int(entry['meeting_id'])
+                except (ValueError, TypeError):
+                    logger.warning(f'[DISCOVERY] Skipping entry with non-integer meeting_id: {entry}')
+                    continue
                 valid.append(entry)
             else:
                 logger.warning(f'[DISCOVERY] Skipping invalid config entry: {entry}')
