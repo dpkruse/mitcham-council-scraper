@@ -161,9 +161,8 @@ class CouncilDocumentScraper:
             base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/web/"
             
             downloader = SupportingDocsDownloader(
-                session=self.session, 
+                session=self.session,
                 logger=self.logger,
-                use_selenium=use_selenium,
                 base_url=base_url
             )
             
