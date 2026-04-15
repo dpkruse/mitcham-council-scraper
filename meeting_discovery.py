@@ -1,5 +1,9 @@
 """meeting_discovery.py
-Discovers upcoming council meeting agenda URLs from the CivicClerk portal.
+Discovers upcoming Full Council meeting agenda URLs from the CivicClerk portal.
+
+Parses onclick="LaunchPlayer(ID,...)" attributes from the server-rendered portal
+homepage. Falls back to config.json if the portal is unreachable or returns no
+Full Council meetings.
 """
 import re
 import json
@@ -7,7 +11,7 @@ import logging
 import os
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import urljoin
 
 CIVICCLERK_PORTAL = 'https://mitcham.civicclerk.com.au/web/'
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'config.json')
@@ -16,7 +20,13 @@ logger = logging.getLogger(__name__)
 
 
 def parse_meeting_links(html: str, base_url: str = CIVICCLERK_PORTAL) -> list[dict]:
-    """Parse Player.aspx meeting links from a CivicClerk portal HTML page.
+    """Parse Full Council meeting links from a CivicClerk portal HTML page.
+
+    Handles two portal HTML patterns:
+      - onclick="LaunchPlayer(ID,...)" on any element (e.g. <tr>)
+      - href="javascript:LaunchPlayer(ID,...)" on <a> elements
+
+    Filters to those whose visible text contains 'full council' (case-insensitive).
 
     Returns a list of dicts: [{'title': str, 'url': str, 'meeting_id': int}, ...]
     sorted highest meeting_id (most recent) first.
@@ -25,34 +35,42 @@ def parse_meeting_links(html: str, base_url: str = CIVICCLERK_PORTAL) -> list[di
     seen_ids = set()
     results = []
 
-    for anchor in soup.find_all('a', href=re.compile(r'Player\.aspx', re.I)):
-        href = anchor.get('href', '')
-        full_url = urljoin(base_url, href)
-        title = anchor.get_text(separator=' ', strip=True)
+    launch_pattern = re.compile(r'LaunchPlayer\((\d+)', re.I)
 
-        qs = parse_qs(urlparse(full_url).query)
-        id_list = qs.get('id', [])
-        if not id_list:
-            continue
+    def _extract(element, attr_value):
+        id_match = launch_pattern.search(attr_value)
+        if not id_match:
+            return
         try:
-            meeting_id = int(id_list[0])
+            meeting_id = int(id_match.group(1))
         except ValueError:
-            continue
-
+            return
         if meeting_id in seen_ids:
-            continue
+            return
+        title = element.get_text(separator=' ', strip=True)
+        if 'full council' not in title.lower():
+            return
         seen_ids.add(meeting_id)
+        url = urljoin(base_url, f'Player.aspx?id={meeting_id}&key=-1&mod=-1&mk=-1&nov=0')
+        results.append({'title': title, 'url': url, 'meeting_id': meeting_id})
 
-        results.append({'title': title, 'url': full_url, 'meeting_id': meeting_id})
+    # Pattern 1: onclick="LaunchPlayer(...)" or onclick="javascript:LaunchPlayer(...)"
+    for element in soup.find_all(onclick=launch_pattern):
+        _extract(element, element.get('onclick', ''))
+
+    # Pattern 2: href="javascript:LaunchPlayer(...)"
+    for element in soup.find_all(href=launch_pattern):
+        _extract(element, element.get('href', ''))
 
     results.sort(key=lambda x: x['meeting_id'], reverse=True)
     return results
 
 
 def discover_latest_council_meetings(portal_url: str = CIVICCLERK_PORTAL) -> list[dict]:
-    """Fetch the CivicClerk portal page and return parsed meeting links.
+    """Fetch the CivicClerk portal page and return Full Council meeting links.
 
-    Falls back to config.json if the portal page returns no links.
+    Falls back to config.json if the portal is unreachable or returns no
+    Full Council meetings.
     Returns list of dicts sorted newest-first.
     """
     with requests.Session() as session:
@@ -66,9 +84,9 @@ def discover_latest_council_meetings(portal_url: str = CIVICCLERK_PORTAL) -> lis
             response.raise_for_status()
             links = parse_meeting_links(response.text, base_url=portal_url)
             if links:
-                logger.info(f'[DISCOVERY] Found {len(links)} meetings on portal page')
+                logger.info(f'[DISCOVERY] Found {len(links)} Full Council meetings on portal')
                 return links
-            logger.warning('[DISCOVERY] Portal returned HTML but no Player.aspx links found (JS-rendered?)')
+            logger.warning('[DISCOVERY] No Full Council meetings found on portal — falling back to config.json')
         except Exception as e:
             logger.error(f'[DISCOVERY] Portal fetch failed: {e}')
 
@@ -90,7 +108,7 @@ def _load_from_config() -> list[dict]:
             if all(k in entry for k in ('title', 'url', 'meeting_id')):
                 valid.append(entry)
             else:
-                logger.warning(f'[DISCOVERY] Skipping invalid config entry (missing required fields): {entry}')
+                logger.warning(f'[DISCOVERY] Skipping invalid config entry: {entry}')
         logger.info(f'[DISCOVERY] Loaded {len(valid)} meetings from config.json')
         return valid
     except Exception as e:
