@@ -6,3 +6,5 @@ config.json
 council_docs/
 zz older/
 .superpowers/
+.env
+tmp_jobs/

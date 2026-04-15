@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>City of Mitcham — Supporting Documents</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            council: {
+              green:  '#2D6A4F',
+              light:  '#52B788',
+              dark:   '#1B4332',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid #D1FAE5;
+      border-top-color: #2D6A4F;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-council-green text-white shadow-md">
+    <div class="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+      <span class="text-2xl">🏛</span>
+      <div>
+        <h1 class="font-semibold text-lg leading-tight">City of Mitcham</h1>
+        <p class="text-green-200 text-sm">Council Meeting Supporting Documents</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-8">
+
+    <!-- Cold-start notice -->
+    <div id="cold-notice" class="hidden mb-4 bg-amber-50 border border-amber-200 text-amber-800
+                                  rounded-lg px-4 py-3 text-sm">
+      <strong>Note:</strong> The server may take up to 30 seconds to wake up if it hasn't been
+      used recently. Please wait while the meeting list loads.
+    </div>
+
+    <!-- Main card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+
+      <!-- Step 1: Email + meeting selector (shown initially) -->
+      <div id="step-select" class="p-6">
+        <h2 class="font-semibold text-gray-800 mb-5">Get supporting documents</h2>
+
+        <!-- Email -->
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="email">
+          Your email address
+        </label>
+        <input id="email" type="email" placeholder="you@example.com"
+               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-5
+                      focus:outline-none focus:ring-2 focus:ring-council-green focus:border-transparent">
+
+        <!-- Meeting list -->
+        <label class="block text-sm font-medium text-gray-700 mb-2">Select a meeting</label>
+        <div id="meetings-loading" class="text-sm text-gray-500 py-3 flex items-center gap-2">
+          <span class="spinner"></span> Loading upcoming meetings…
+        </div>
+        <div id="meetings-error" class="hidden text-sm text-red-600 py-2">
+          Could not load meetings. Please try refreshing the page.
+        </div>
+        <div id="meetings-list" class="space-y-2 mb-6"></div>
+
+        <!-- Error banner -->
+        <div id="submit-error" class="hidden bg-red-50 border border-red-200 text-red-700
+                                       rounded-lg px-4 py-3 text-sm mb-4"></div>
+
+        <!-- Submit -->
+        <button id="btn-generate"
+                disabled
+                onclick="submitJob()"
+                class="w-full bg-council-green text-white font-semibold py-2.5 px-4 rounded-lg
+                       transition-opacity disabled:opacity-40 disabled:cursor-not-allowed
+                       hover:enabled:bg-council-dark">
+          Generate &amp; Email Documents
+        </button>
+        <p class="text-xs text-gray-400 text-center mt-2">
+          Documents will be emailed to you. Download links expire after 24 hours.
+        </p>
+      </div>
+
+      <!-- Step 2: Progress (hidden until job starts) -->
+      <div id="step-progress" class="hidden p-6">
+        <h2 class="font-semibold text-gray-800 mb-6">Generating documents…</h2>
+        <ol id="stage-list" class="space-y-3">
+          <!-- populated by JS -->
+        </ol>
+      </div>
+
+      <!-- Step 3: Done (hidden until complete) -->
+      <div id="step-done" class="hidden p-6">
+        <div class="flex items-center gap-2 mb-5">
+          <span class="text-green-600 text-xl">✅</span>
+          <div>
+            <p class="font-semibold text-gray-800">Documents sent!</p>
+            <p id="sent-to" class="text-sm text-gray-500"></p>
+          </div>
+        </div>
+
+        <p class="text-xs text-gray-400 mb-4">
+          Also available here for the next 24 hours:
+        </p>
+
+        <!-- Combined PDF CTA -->
+        <div id="combined-wrap" class="hidden mb-4">
+          <a id="combined-link" href="#" download
+             class="block w-full text-center bg-council-green text-white font-semibold
+                    py-2.5 px-4 rounded-lg hover:bg-council-dark transition-colors">
+            ⬇ Download Combined PDF
+          </a>
+        </div>
+
+        <!-- Individual files -->
+        <ul id="file-list" class="divide-y divide-gray-100 border border-gray-200 rounded-lg
+                                   overflow-hidden mb-4"></ul>
+
+        <!-- Start over -->
+        <button onclick="reset()"
+                class="w-full border border-gray-300 text-gray-600 text-sm font-medium
+                       py-2 rounded-lg hover:bg-gray-50 transition-colors mt-2">
+          Start Over
+        </button>
+      </div>
+
+      <!-- Step 4: Error -->
+      <div id="step-error" class="hidden p-6">
+        <div class="flex items-center gap-2 mb-3">
+          <span class="text-red-500 text-xl">⚠️</span>
+          <p class="font-semibold text-gray-800">Something went wrong</p>
+        </div>
+        <p id="error-msg" class="text-sm text-red-600 mb-4"></p>
+        <button onclick="reset()"
+                class="w-full border border-gray-300 text-gray-600 text-sm font-medium
+                       py-2 rounded-lg hover:bg-gray-50 transition-colors">
+          Try Again
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Rate limit info -->
+    <p class="text-center text-xs text-gray-400 mt-5">
+      Residents: up to 5 requests per day ·
+      Council staff (<span class="font-mono">@mitchamcouncil.sa.gov.au</span>): unlimited
+    </p>
+  </main>
+
+  <script>
+    const STAGES = [
+      'Checking cache...',
+      'Fetching agenda structure...',
+      'Downloading documents...',
+      'Building combined PDF...',
+      'Caching documents...',
+      'Sending email...',
+    ];
+
+    let selectedMeeting = null;   // {title, url}
+    let pollTimer = null;
+
+    // ── Load meetings ──────────────────────────────────────────────────────────
+    async function loadMeetings() {
+      const coldNotice = document.getElementById('cold-notice');
+      const timer = setTimeout(() => coldNotice.classList.remove('hidden'), 4000);
+
+      try {
+        const res = await fetch('/api/meetings');
+        clearTimeout(timer);
+        coldNotice.classList.add('hidden');
+
+        if (!res.ok) throw new Error('Network error');
+        const meetings = await res.json();
+
+        document.getElementById('meetings-loading').classList.add('hidden');
+
+        if (!meetings.length) {
+          document.getElementById('meetings-error').textContent =
+            'No upcoming Full Council meetings found.';
+          document.getElementById('meetings-error').classList.remove('hidden');
+          return;
+        }
+
+        const list = document.getElementById('meetings-list');
+        meetings.forEach((m, i) => {
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.dataset.url = m.url;
+          card.dataset.title = m.title;
+          card.className = [
+            'w-full text-left px-4 py-3 rounded-lg border text-sm transition-all',
+            'border-gray-200 hover:border-council-green hover:bg-green-50',
+          ].join(' ');
+          card.innerHTML = `
+            <span class="font-medium text-gray-800">${m.title}</span>
+            ${i === 0 ? '<span class="ml-2 text-xs bg-green-100 text-council-green font-medium px-2 py-0.5 rounded-full">Upcoming</span>' : ''}
+          `;
+          card.addEventListener('click', () => selectMeeting(card, m));
+          list.appendChild(card);
+        });
+
+      } catch {
+        clearTimeout(timer);
+        coldNotice.classList.add('hidden');
+        document.getElementById('meetings-loading').classList.add('hidden');
+        document.getElementById('meetings-error').classList.remove('hidden');
+      }
+    }
+
+    // ── Meeting selection ──────────────────────────────────────────────────────
+    function selectMeeting(card, meeting) {
+      document.querySelectorAll('#meetings-list button').forEach(b => {
+        b.classList.remove('border-council-green', 'bg-green-50', 'ring-2', 'ring-council-green');
+        b.classList.add('border-gray-200');
+      });
+      card.classList.add('border-council-green', 'bg-green-50', 'ring-2', 'ring-council-green');
+      card.classList.remove('border-gray-200');
+      selectedMeeting = meeting;
+      validateForm();
+    }
+
+    function validateForm() {
+      const email = document.getElementById('email').value.trim();
+      const valid = selectedMeeting && email.includes('@') && email.includes('.');
+      document.getElementById('btn-generate').disabled = !valid;
+    }
+
+    document.getElementById('email').addEventListener('input', validateForm);
+
+    // ── Submit job ─────────────────────────────────────────────────────────────
+    async function submitJob() {
+      const email = document.getElementById('email').value.trim();
+      const errorEl = document.getElementById('submit-error');
+      errorEl.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            url: selectedMeeting.url,
+            email: email,
+            meeting_title: selectedMeeting.title,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          errorEl.textContent = data.detail || 'An error occurred.';
+          errorEl.classList.remove('hidden');
+          return;
+        }
+
+        showProgress();
+        startPolling(data.job_id, email);
+
+      } catch {
+        errorEl.textContent = 'Could not connect to the server. Please try again.';
+        errorEl.classList.remove('hidden');
+      }
+    }
+
+    // ── Progress UI ────────────────────────────────────────────────────────────
+    function showProgress() {
+      document.getElementById('step-select').classList.add('hidden');
+      const prog = document.getElementById('step-progress');
+      prog.classList.remove('hidden');
+
+      const ol = document.getElementById('stage-list');
+      ol.innerHTML = '';
+      STAGES.forEach((label, i) => {
+        const li = document.createElement('li');
+        li.id = `stage-${i}`;
+        li.className = 'flex items-center gap-3 text-sm';
+        li.innerHTML = `
+          <span class="stage-icon w-5 h-5 flex-shrink-0 flex items-center justify-center
+                        rounded-full border-2 border-gray-200 text-xs">○</span>
+          <span class="stage-label text-gray-400">${label}</span>
+        `;
+        ol.appendChild(li);
+      });
+    }
+
+    function updateStages(currentStage) {
+      STAGES.forEach((label, i) => {
+        const li = document.getElementById(`stage-${i}`);
+        if (!li) return;
+        const icon = li.querySelector('.stage-icon');
+        const lbl  = li.querySelector('.stage-label');
+
+        const isCurrent = currentStage && currentStage.toLowerCase().startsWith(label.toLowerCase().split('…')[0].toLowerCase().substring(0, 12));
+
+        // mark all stages before the current one as done
+        const currentIdx = STAGES.findIndex(s =>
+          currentStage && currentStage.toLowerCase().includes(s.toLowerCase().replace('...','').trim().substring(0,12).toLowerCase())
+        );
+
+        if (i < currentIdx) {
+          icon.innerHTML = '✓';
+          icon.className = 'stage-icon w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full bg-council-green text-white text-xs font-bold';
+          lbl.className = 'stage-label text-gray-700 font-medium';
+        } else if (i === currentIdx) {
+          icon.innerHTML = '<span class="spinner"></span>';
+          icon.className = 'stage-icon w-5 h-5 flex-shrink-0 flex items-center justify-center';
+          lbl.className = 'stage-label text-council-green font-semibold';
+        } else {
+          icon.innerHTML = '○';
+          icon.className = 'stage-icon w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full border-2 border-gray-200 text-xs text-gray-300';
+          lbl.className = 'stage-label text-gray-400';
+        }
+      });
+    }
+
+    // ── Polling ────────────────────────────────────────────────────────────────
+    function startPolling(jobId, email) {
+      pollTimer = setInterval(() => pollJob(jobId, email), 2000);
+    }
+
+    async function pollJob(jobId, email) {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`);
+        if (!res.ok) return;
+        const job = await res.json();
+
+        updateStages(job.stage || '');
+
+        if (job.status === 'done') {
+          clearInterval(pollTimer);
+          showDone(job, email);
+        } else if (job.status === 'error') {
+          clearInterval(pollTimer);
+          showError(job.error || 'An unexpected error occurred.');
+        }
+      } catch {
+        // network blip — keep polling
+      }
+    }
+
+    // ── Done UI ────────────────────────────────────────────────────────────────
+    function showDone(job, email) {
+      document.getElementById('step-progress').classList.add('hidden');
+      const done = document.getElementById('step-done');
+      done.classList.remove('hidden');
+
+      document.getElementById('sent-to').textContent = `Documents emailed to ${email}`;
+
+      if (job.combined_pdf_url) {
+        const wrap = document.getElementById('combined-wrap');
+        wrap.classList.remove('hidden');
+        document.getElementById('combined-link').href = job.combined_pdf_url;
+      }
+
+      const ul = document.getElementById('file-list');
+      ul.innerHTML = '';
+      (job.files || []).forEach(f => {
+        const li = document.createElement('li');
+        li.className = 'flex items-center justify-between px-4 py-2.5';
+        li.innerHTML = `
+          <span class="text-sm text-gray-700 truncate mr-3">${f.name.replace('.pdf','')}</span>
+          <a href="${f.url}" download
+             class="flex-shrink-0 text-xs font-medium text-council-green border border-council-green
+                    rounded px-2.5 py-1 hover:bg-green-50 transition-colors whitespace-nowrap">
+            ⬇ PDF
+          </a>
+        `;
+        ul.appendChild(li);
+      });
+    }
+
+    // ── Error UI ───────────────────────────────────────────────────────────────
+    function showError(msg) {
+      document.getElementById('step-progress').classList.add('hidden');
+      document.getElementById('step-error').classList.remove('hidden');
+      document.getElementById('error-msg').textContent = msg;
+    }
+
+    // ── Reset ──────────────────────────────────────────────────────────────────
+    function reset() {
+      document.getElementById('step-done').classList.add('hidden');
+      document.getElementById('step-error').classList.add('hidden');
+      document.getElementById('step-select').classList.remove('hidden');
+      document.getElementById('submit-error').classList.add('hidden');
+      selectedMeeting = null;
+      document.getElementById('btn-generate').disabled = true;
+    }
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+    loadMeetings();
+  </script>
+</body>
+</html>
