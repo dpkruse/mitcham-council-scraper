@@ -111,6 +111,7 @@ def main():
                         'filepath': os.path.join(result['meeting_folder'],
                                                   t['recommended_filename']),
                         'item_number': t.get('parent_item_number', ''),
+                        'item_descriptor': t.get('parent_item_text', ''),
                         'title': t.get('title', ''),
                     }
                     for t in result.get('target_downloads', [])
@@ -118,7 +119,8 @@ def main():
                 combined_name = result['meeting_title'] + ' - Supporting Documents.pdf'
                 combined_out = os.path.join(result['meeting_folder'], combined_name)
                 combined_pdf = combine_pdfs(
-                    pdf_entries, combined_out, result['meeting_title']
+                    pdf_entries, combined_out, result['meeting_title'],
+                    meeting_url=url,
                 )
                 if combined_pdf:
                     logger.info('[SCHEDULED] Combined PDF: ' + combined_pdf)
