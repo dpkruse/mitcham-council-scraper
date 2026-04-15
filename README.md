@@ -14,6 +14,23 @@ published on the CivicClerk portal.
 
 Output is saved to `council_docs/{Meeting Title}/`.
 
+## Background
+
+Mitcham Council resolved to stop printing supporting documents in the agenda packet
+to reduce escalating printing costs. Elected members receive only the printed agenda;
+supporting documents are published online separately. CivicClerk (the portal software)
+refers to the printed agenda as the "packet" — this tool downloads the
+separately-published supporting documents that accompany it.
+
+A typical example is the 27 January 2026 Full Council meeting, which had 8 supporting
+documents listed in the agenda under the note: *"These documents are not included in
+the agenda packet but can be found on the website."* Documents included historical
+library records, opening hours schedules, and a slide deck — none of which were
+printed. This tool automates downloading all of them into a single named PDF.
+
+Only Full Council meetings have separately-uploaded supporting documents (other meeting
+types such as Audit Committee and Council Assessment Panel do not).
+
 ## Setup
 
 **Requirements:** Python 3.11+, Google Chrome, ChromeDriver matching your Chrome version
@@ -59,9 +76,12 @@ To remove the task: `schtasks /delete /tn MitchamCouncilScraper /f`
 
 ## Meeting URL discovery
 
-The CivicClerk portal uses JavaScript rendering, so meeting URLs cannot be
-scraped automatically from the portal homepage. Before each run, add the
-upcoming meeting URL to `config.json`:
+The scraper auto-discovers upcoming Full Council meetings by fetching the
+[CivicClerk portal](https://mitcham.civicclerk.com.au/web/) and parsing meeting IDs
+from the page HTML. No manual configuration is needed for regular runs.
+
+`config.json` is only needed as a fallback if the portal is unreachable or its HTML
+structure changes. Format:
 
 ```json
 {
