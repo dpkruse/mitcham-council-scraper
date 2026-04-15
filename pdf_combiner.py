@@ -5,7 +5,7 @@ Combines downloaded supporting-document PDFs into a single file with:
 - PDF bookmarks for quick navigation
 - Clickable internal links from index rows to cover pages
 - A footer crediting the tool
-- A clickable link to the full meeting agenda
+- A clickable heading linking to the full meeting agenda
 """
 import io
 import logging
@@ -25,20 +25,23 @@ logger = logging.getLogger(__name__)
 GITHUB_URL = 'https://github.com/dpkruse/mitcham-council-scraper'
 GITHUB_DISPLAY = 'github.com/dpkruse/mitcham-council-scraper'
 
+# Colour palette aligned with Mitcham council website CSS
+_C_HEADING = (0.208, 0.208, 0.212)  # #353536 — headings
+_C_BODY = (0.290, 0.290, 0.290)     # #4A4A4A — body text
+_C_LINK = (0, 0.427, 0.314)         # #006d50 — website active/hover link (teal)
+_C_LINK_BLUE = (0, 0.341, 0.659)    # #0057A8 — blue for footer GitHub link
+_C_GREY = (0.55, 0.55, 0.55)        # secondary / metadata grey
+
 
 def _display_title(entry):
-    """Strip 'Supporting Document N:' prefix and prepend 'Supporting document — '."""
+    """Reformat 'Supporting Document N: title' → 'Supporting document N — title'."""
     raw = entry.get('title', os.path.basename(entry['filepath']))
-    stripped = re.sub(
-        r'^Supporting Document \d+\s*[-:]?\s*', '', raw,
-        flags=re.IGNORECASE,
-    ).strip()
-    return f'Supporting document \u2014 {stripped}'
-
-
-def _clean_descriptor(item_descriptor):
-    """Strip leading sub-item digit (e.g. '4 Library Opening Hours' → 'Library Opening Hours')."""
-    return re.sub(r'^\d+\s+', '', item_descriptor).strip()
+    match = re.match(r'^Supporting Document (\d+)\s*[-:]?\s*', raw, flags=re.IGNORECASE)
+    if match:
+        num = match.group(1)
+        rest = raw[match.end():].strip()
+        return f'Supporting document {num} \u2014 {rest}'
+    return f'Supporting document \u2014 {raw.strip()}'
 
 
 def _wrap_lines(text, c, font_name, font_size, max_width):
@@ -58,11 +61,20 @@ def _wrap_lines(text, c, font_name, font_size, max_width):
     return lines or [text]
 
 
+def _truncate_to_width(text, c, font_name, font_size, max_width):
+    """Truncate text with ellipsis to fit within max_width points."""
+    if c.stringWidth(text, font_name, font_size) <= max_width:
+        return text
+    while len(text) > 4 and c.stringWidth(text + '\u2026', font_name, font_size) > max_width:
+        text = text[:-1]
+    return text + '\u2026'
+
+
 def _build_index_page(groups, page_map, meeting_title, run_date, meeting_url):
     """Return (BytesIO, link_records) for the index/cover page PDF.
 
     link_records: list of (filepath, x1, y1, x2, y2, page_in_index)
-    where coordinates are in PDF points (bottom-left origin) and
+    where coordinates are PDF points (bottom-left origin) and
     page_in_index is 0-based within the index PDF.
     """
     width, height = A4
@@ -72,99 +84,103 @@ def _build_index_page(groups, page_map, meeting_title, run_date, meeting_url):
     current_index_page = 0
     link_records = []
 
-    # --- Heading (word-wrapped) ---
+    # --- Main heading: word-wrapped; clickable link to meeting if URL provided ---
     heading_text = f'City of Mitcham \u2014 {meeting_title}'
     heading_lines = _wrap_lines(heading_text, c, 'Helvetica-Bold', 15, width - 80)
     c.setFont('Helvetica-Bold', 15)
+    c.setFillColorRGB(*(_C_LINK if meeting_url else _C_HEADING))
     for i, line in enumerate(heading_lines):
-        c.drawString(40, height - 50 - i * 19, line)
+        line_y = height - 50 - i * 19
+        c.drawString(40, line_y, line)
+        if meeting_url:
+            lw = c.stringWidth(line, 'Helvetica-Bold', 15)
+            c.linkURL(meeting_url, (40, line_y - 4, 40 + lw, line_y + 13), relative=0)
 
     y_subhead = height - 50 - (len(heading_lines) - 1) * 19 - 19
     c.setFont('Helvetica', 10)
+    c.setFillColorRGB(*_C_BODY)
     c.drawString(40, y_subhead, f'{run_date}  \u00b7  Supporting Documents')
 
     y = y_subhead - 22
 
-    # --- Agenda link (meeting title as clickable text) ---
-    if meeting_url:
-        c.setFont('Helvetica', 9)
-        c.setFillColorRGB(0.1, 0.3, 0.65)
-        link_label = f'Full agenda: {meeting_title}'
-        c.drawString(40, y, link_label)
-        link_width = c.stringWidth(link_label, 'Helvetica', 9)
-        c.linkURL(meeting_url, (40, y - 2, 40 + link_width, y + 9), relative=0)
-        c.setFillColorRGB(0, 0, 0)
-        y -= 16
-
     # --- Rule ---
     y -= 4
+    c.setFillColorRGB(*_C_BODY)
     c.line(40, y, width - 40, y)
     y -= 14
 
     # --- Grouped table ---
     for (item_number, item_descriptor), entries in groups.items():
-        if y < 80:
+        # Group heading — may wrap for long descriptors
+        heading = (f'{item_number}  {item_descriptor}'.strip()
+                   if item_descriptor else item_number)
+        c.setFont('Helvetica-Bold', 10)
+        heading_lines_g = _wrap_lines(heading, c, 'Helvetica-Bold', 10, width - 80)
+
+        # Ensure heading + at least one doc row fits on this page
+        needed = len(heading_lines_g) * 13 + 3 + 13
+        if y - needed < 80:
             c.showPage()
             current_index_page += 1
             y = height - 55
 
-        # Item group heading
-        clean_desc = _clean_descriptor(item_descriptor) if item_descriptor else ''
-        heading = (f'{item_number}  {clean_desc}'.strip()
-                   if clean_desc else item_number)
         c.setFont('Helvetica-Bold', 10)
-        c.drawString(40, y, heading)
-        y -= 3
+        c.setFillColorRGB(*_C_HEADING)
+        for i, hline in enumerate(heading_lines_g):
+            c.drawString(40, y - i * 13, hline)
+        y -= (len(heading_lines_g) - 1) * 13 + 3
+        c.setFillColorRGB(*_C_BODY)
         c.line(40, y, width - 40, y)
         y -= 13
 
         # Document rows
         c.setFont('Helvetica', 9)
+        c.setFillColorRGB(*_C_BODY)
         for entry in entries:
             if y < 80:
                 c.showPage()
                 current_index_page += 1
                 y = height - 55
                 c.setFont('Helvetica', 9)
+                c.setFillColorRGB(*_C_BODY)
 
-            title = _display_title(entry)
-            if len(title) > 76:
-                title = title[:73] + '...'
-            pg = str(page_map.get(entry['filepath'], '?'))
+            full_title = _display_title(entry)
+            pg_text = str(page_map.get(entry['filepath'], '?'))
+            pg_width = c.stringWidth(pg_text, 'Helvetica', 9)
+            available = width - 40 - 52 - pg_width - 10
+            title = _truncate_to_width(full_title, c, 'Helvetica', 9, available)
+
             c.drawString(52, y, title)
-            c.drawRightString(width - 40, y, pg)
+            c.drawRightString(width - 40, y, pg_text)
 
-            # Record bounding box for internal link annotation
             link_records.append((
                 entry['filepath'],
                 52, y - 3, width - 40, y + 10,
                 current_index_page,
             ))
-
             y -= 13
 
-        y -= 4  # extra gap between groups
+        y -= 4  # gap between groups
 
     # --- Three-line footer ---
     c.setFont('Helvetica', 8)
-    c.setFillColorRGB(0.5, 0.5, 0.5)
+    c.setFillColorRGB(*_C_GREY)
     c.drawCentredString(width / 2, 52, 'Generated by Mitcham Council supporting document scraper')
     c.drawCentredString(width / 2, 40, 'Scraper written by Councillor Darren Kruse')
 
-    # Third line: "Code online at <clickable link>"
+    # Third line: grey prefix + blue clickable GitHub link, centred together
     prefix = 'Code online at '
-    full_line = prefix + GITHUB_DISPLAY
-    c.drawCentredString(width / 2, 28, full_line)
-    full_w = c.stringWidth(full_line, 'Helvetica', 8)
+    full_w = c.stringWidth(prefix + GITHUB_DISPLAY, 'Helvetica', 8)
     prefix_w = c.stringWidth(prefix, 'Helvetica', 8)
     link_w = c.stringWidth(GITHUB_DISPLAY, 'Helvetica', 8)
     line_start_x = width / 2 - full_w / 2
-    link_x1 = line_start_x + prefix_w
-    link_x2 = link_x1 + link_w
-    c.linkURL(GITHUB_URL, (link_x1, 26, link_x2, 36), relative=0)
+    c.setFillColorRGB(*_C_GREY)
+    c.drawString(line_start_x, 28, prefix)
+    c.setFillColorRGB(*_C_LINK_BLUE)
+    c.drawString(line_start_x + prefix_w, 28, GITHUB_DISPLAY)
+    c.linkURL(GITHUB_URL, (line_start_x + prefix_w, 26, line_start_x + prefix_w + link_w, 36), relative=0)
 
     c.setFillColorRGB(0, 0, 0)
-
     c.save()
     buf.seek(0)
     return buf, link_records
@@ -178,39 +194,50 @@ def _build_cover_page(entry, meeting_title, run_date, n, m):
 
     item_number = entry.get('item_number', '')
     item_descriptor = entry.get('item_descriptor', '')
-    clean_desc = _clean_descriptor(item_descriptor) if item_descriptor else ''
     doc_title = _display_title(entry)
 
-    # Top grey line
+    # Top grey metadata line
     c.setFont('Helvetica', 8)
-    c.setFillColorRGB(0.55, 0.55, 0.55)
+    c.setFillColorRGB(*_C_GREY)
     c.drawCentredString(
         width / 2, height - 60,
         f'City of Mitcham  \u00b7  {meeting_title}  \u00b7  {run_date}',
     )
-    c.setFillColorRGB(0, 0, 0)
 
-    # Item line (medium bold)
-    item_line = (f'Item {item_number}  \u00b7  {clean_desc}'
-                 if clean_desc else f'Item {item_number}')
+    # Item line (medium bold, word-wrapped)
+    item_line = (f'Item {item_number}  \u00b7  {item_descriptor}'
+                 if item_descriptor else f'Item {item_number}')
     c.setFont('Helvetica-Bold', 12)
-    c.drawCentredString(width / 2, height / 2 + 50, item_line)
+    item_lines = _wrap_lines(item_line, c, 'Helvetica-Bold', 12, width - 80)
+    item_line_h = len(item_lines) * 16
 
     # Document title (large bold, word-wrapped)
-    lines = _wrap_lines(doc_title, c, 'Helvetica-Bold', 16, width - 80)
-    line_height = 22
-    title_top = height / 2 + 10
     c.setFont('Helvetica-Bold', 16)
-    for i, line in enumerate(lines):
-        c.drawCentredString(width / 2, title_top - i * line_height, line)
+    doc_lines = _wrap_lines(doc_title, c, 'Helvetica-Bold', 16, width - 80)
+    doc_line_h = len(doc_lines) * 22
+
+    # Centre both blocks together vertically
+    gap = 22
+    total_h = item_line_h + gap + doc_line_h
+    block_top = height / 2 + total_h / 2
+
+    c.setFont('Helvetica-Bold', 12)
+    c.setFillColorRGB(*_C_HEADING)
+    for i, il in enumerate(item_lines):
+        c.drawCentredString(width / 2, block_top - i * 16, il)
+
+    c.setFont('Helvetica-Bold', 16)
+    doc_top = block_top - item_line_h - gap
+    for i, dl in enumerate(doc_lines):
+        c.drawCentredString(width / 2, doc_top - i * 22, dl)
 
     # Bottom note
     c.line(40, 60, width - 40, 60)
     c.setFont('Helvetica', 9)
-    c.setFillColorRGB(0.55, 0.55, 0.55)
+    c.setFillColorRGB(*_C_GREY)
     c.drawCentredString(width / 2, 45, f'Supporting document {n} of {m} for this item')
-    c.setFillColorRGB(0, 0, 0)
 
+    c.setFillColorRGB(0, 0, 0)
     c.save()
     buf.seek(0)
     return buf
@@ -223,12 +250,12 @@ def combine_pdfs(pdf_entries, output_path, meeting_title, run_date=None, meeting
         pdf_entries: list of dicts with keys:
             'filepath'        — path to the PDF file
             'item_number'     — agenda item number, e.g. '10.4'
-            'item_descriptor' — agenda item title, e.g. 'Library Opening Hours' (optional)
+            'item_descriptor' — agenda item title, e.g. '4 Library Opening Hours' (optional)
             'title'           — raw document title (optional)
         output_path:  full path for the output combined PDF
         meeting_title: displayed in headings
         run_date:     date string (defaults to today)
-        meeting_url:  Player.aspx URL shown as a clickable link (optional)
+        meeting_url:  Player.aspx URL; used as clickable link on index heading (optional)
 
     Returns:
         output_path on success, None if no valid input files exist.
@@ -274,22 +301,19 @@ def combine_pdfs(pdf_entries, output_path, meeting_title, run_date=None, meeting
     # --- Assemble writer ---
     writer = PdfWriter()
 
-    # Index page(s)
     index_reader = PdfReader(index_buf)
     for page in index_reader.pages:
         writer.add_page(page)
 
-    # Track 0-indexed page positions for bookmarks
     bookmark_page = {}      # filepath -> 0-indexed page of its cover
     group_first_page = {}   # group key -> 0-indexed page of first cover in group
 
-    page_idx = len(index_reader.pages)  # first page after index
+    page_idx = len(index_reader.pages)
 
     for entry in valid_entries:
         key = (entry.get('item_number', ''), entry.get('item_descriptor', ''))
         n, m = cover_position[entry['filepath']]
 
-        # Cover page
         cover_buf = _build_cover_page(entry, meeting_title, run_date, n, m)
         cover_pages = PdfReader(cover_buf).pages
         for page in cover_pages:
@@ -299,7 +323,6 @@ def combine_pdfs(pdf_entries, output_path, meeting_title, run_date=None, meeting
         group_first_page.setdefault(key, page_idx)
         page_idx += len(cover_pages)
 
-        # Document pages
         try:
             doc_pages = PdfReader(entry['filepath']).pages
             for page in doc_pages:
@@ -324,9 +347,8 @@ def combine_pdfs(pdf_entries, output_path, meeting_title, run_date=None, meeting
 
     # --- PDF bookmarks (outline) ---
     for (item_number, item_descriptor), entries in groups.items():
-        clean_desc = _clean_descriptor(item_descriptor) if item_descriptor else ''
-        heading = (f'{item_number}  {clean_desc}'.strip()
-                   if clean_desc else item_number)
+        heading = (f'{item_number}  {item_descriptor}'.strip()
+                   if item_descriptor else item_number)
         try:
             parent = writer.add_outline_item(
                 heading, group_first_page[(item_number, item_descriptor)]
