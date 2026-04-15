@@ -5,3 +5,4 @@ __pycache__/
 config.json
 council_docs/
 zz older/
+.superpowers/
