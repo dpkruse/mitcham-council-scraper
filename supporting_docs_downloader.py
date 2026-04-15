@@ -78,12 +78,9 @@ class SupportingDocsDownloader:
         filepath = os.path.join(output_folder, recommended_filename)
 
         # Resolve relative URLs (e.g. ../GenFile.aspx?ad=123&token=abc)
-        if raw_url.startswith('..'):
-            url = urljoin(self.base_url, raw_url.lstrip('../'))
-        elif raw_url.startswith('http'):
-            url = raw_url
-        else:
-            url = urljoin(self.base_url, raw_url)
+        # urljoin handles all cases: absolute URLs are returned unchanged,
+        # relative URLs (including ../) are resolved correctly per RFC 3986.
+        url = urljoin(self.base_url, raw_url)
 
         self.logger.debug(f'[DOWNLOAD] {recommended_filename}')
         self.logger.debug(f'    URL: {url}')
