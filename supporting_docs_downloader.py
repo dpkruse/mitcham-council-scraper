@@ -1,4 +1,5 @@
 # supporting_docs_downloader.py
+import re
 import requests
 import os
 import json
@@ -77,10 +78,10 @@ class SupportingDocsDownloader:
         recommended_filename = target.get('recommended_filename', 'document.pdf')
         filepath = os.path.join(output_folder, recommended_filename)
 
-        # Resolve relative URLs (e.g. ../GenFile.aspx?ad=123&token=abc)
-        # urljoin handles all cases: absolute URLs are returned unchanged,
-        # relative URLs (including ../) are resolved correctly per RFC 3986.
-        url = urljoin(self.base_url, raw_url)
+        # Strip leading ../ prefix(es) so urljoin resolves within base_url,
+        # not above it. e.g. ../GenFile.aspx → web/GenFile.aspx, not /GenFile.aspx
+        stripped = re.sub(r'^(\.\.\/)+', '', raw_url)
+        url = urljoin(self.base_url, stripped)
 
         self.logger.debug(f'[DOWNLOAD] {recommended_filename}')
         self.logger.debug(f'    URL: {url}')

@@ -60,7 +60,7 @@ def test_resolves_relative_url(downloader, tmp_path):
         downloader.download_single_document(target, str(tmp_path))
         called_url = mock_get.call_args[0][0]
 
-    assert called_url == 'https://mitcham.civicclerk.com.au/GenFile.aspx?ad=123&token=xyz'
+    assert called_url == 'https://mitcham.civicclerk.com.au/web/GenFile.aspx?ad=123&token=xyz'
 
 
 def test_handles_network_error(downloader, tmp_path):
