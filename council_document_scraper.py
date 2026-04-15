@@ -191,7 +191,8 @@ class CouncilDocumentScraper:
                 "agenda_url": agenda_url,
                 "total_supporting_docs": analysis_result['supporting_docs_count'],
                 "successful_downloads": download_result.get('successful_downloads', 0),
-                "failed_downloads": download_result.get('failed_downloads', 0)
+                "failed_downloads": download_result.get('failed_downloads', 0),
+                "target_downloads": analysis_result['target_downloads'],
             }
             
         except Exception as e:
@@ -336,7 +337,9 @@ class CouncilDocumentScraper:
                     'url': doc['url'],
                     'recommended_filename': recommended_filename,
                     'doc_number': doc['doc_number'],
-                    'ad_value': doc['ad_value']
+                    'ad_value': doc['ad_value'],
+                    'parent_item_number': doc.get('parent_item_number', ''),
+                    'parent_item_text': doc.get('parent_item_text', ''),
                 })
             
             with open(targets_file, 'w', encoding='utf-8') as f:
@@ -357,33 +360,84 @@ class CouncilDocumentScraper:
             return None
     
     def create_recommended_filename(self, doc):
-        """Create recommended filename using SD_ prefix with ad_value"""
-        
+        """Create filename with 'Item X.Y' prefix.
+
+        Format: Item {parent_item_number} {clean_title}.pdf
+        Total filename capped at 120 characters (prefix + title + .pdf).
+        """
         title = doc['title']
-        ad_value = doc.get('ad_value')
-        doc_number = doc.get('doc_number')
-        
-        # Remove "Supporting Document X - " prefix
-        clean_title = re.sub(r'^Supporting Document \d+\s*[-:]?\s*', '', title, flags=re.IGNORECASE)
-        clean_title = clean_title.strip()
-        
-        # Clean up filename-unsafe characters
+        item_number = doc.get('parent_item_number', '')
+
+        # Strip "Supporting Document N - " prefix (old agenda format)
+        clean_title = re.sub(
+            r'^Supporting Document \d+\s*[-:]?\s*', '', title, flags=re.IGNORECASE
+        ).strip()
+
+        # Remove filesystem-unsafe characters
         safe_title = re.sub(r'[<>:"/\\|?*]', '', clean_title)
         safe_title = re.sub(r'\s+', ' ', safe_title).strip()
-        
-        # Limit length
-        if len(safe_title) > 100:
-            safe_title = safe_title[:97] + "..."
-        
-        # Create filename with ad_value
-        if ad_value:
-            filename = f"SD_{ad_value}_{safe_title}.pdf"
-        elif doc_number:
-            filename = f"SD_{doc_number:02d}_{safe_title}.pdf"
-        else:
-            filename = f"SD_00_{safe_title}.pdf"
-        
-        return filename
+
+        prefix = f"Item {item_number} " if item_number else ""
+
+        # Cap total filename at 120 chars
+        max_title_len = 120 - len(prefix) - 4  # 4 = len('.pdf')
+        if max_title_len < 10:
+            max_title_len = 10
+        if len(safe_title) > max_title_len:
+            safe_title = safe_title[:max_title_len]
+
+        return f"{prefix}{safe_title}.pdf"
+
+def write_run_summary(output_folder, meeting_title, agenda_url,
+                      target_downloads, download_result, combined_pdf_path=None):
+    """Write a markdown-formatted _run_summary.txt into the meeting folder.
+
+    Always written even when zero documents were found.
+    Returns the path to the written file.
+    """
+    run_date = datetime.now().strftime('%Y-%m-%d %H:%M')
+    found = len(target_downloads)
+    downloaded = download_result.get('successful_downloads', 0)
+    failed = download_result.get('failed_downloads', 0)
+
+    lines = [
+        f'# {meeting_title} — Supporting Documents Run',
+        '',
+        f'**Run date:** {run_date}',
+        f'**URL:** {agenda_url}',
+        '',
+        '## Documents',
+        '',
+        '| Item | Title | Status | File |',
+        '|------|-------|--------|------|',
+    ]
+
+    for target in target_downloads:
+        item_num = target.get('parent_item_number', '')
+        title = target.get('title', '')[:60]
+        filename = target.get('recommended_filename', '')
+        filepath = os.path.join(output_folder, filename)
+        status = 'Downloaded' if os.path.isfile(filepath) else 'Failed'
+        lines.append(f'| {item_num} | {title} | {status} | {filename} |')
+
+    lines += [
+        '',
+        '## Summary',
+        f'- Supporting documents found: {found}',
+        f'- Downloaded: {downloaded}  Failed: {failed}',
+    ]
+
+    if combined_pdf_path:
+        lines.append(f'- Combined PDF: {os.path.basename(combined_pdf_path)}')
+    else:
+        lines.append('- Combined PDF: Not generated — use --combine to create')
+
+    summary_path = os.path.join(output_folder, '_run_summary.txt')
+    with open(summary_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')
+
+    return summary_path
+
 
 def main():
     parser = argparse.ArgumentParser(description='Council Document Scraper - Three-Stage Approach')
