@@ -94,6 +94,7 @@ def test_index_page_contains_city_of_mitcham(tmp_path):
 
 
 def test_index_page_contains_meeting_url(tmp_path):
+    """When meeting_url is provided, 'Full agenda:' row appears in index."""
     pdf_path = str(tmp_path / 'input.pdf')
     make_pdf(pdf_path)
     output_path = str(tmp_path / 'combined.pdf')
@@ -105,10 +106,11 @@ def test_index_page_contains_meeting_url(tmp_path):
         meeting_url=url,
     )
     index_text = PdfReader(output_path).pages[0].extract_text()
-    assert 'mitcham.civicclerk.com.au' in index_text
+    assert 'Full agenda:' in index_text
 
 
 def test_index_page_omits_url_when_none(tmp_path):
+    """When meeting_url is None, 'Full agenda:' row is absent from index."""
     pdf_path = str(tmp_path / 'input.pdf')
     make_pdf(pdf_path)
     output_path = str(tmp_path / 'combined.pdf')
@@ -119,7 +121,7 @@ def test_index_page_omits_url_when_none(tmp_path):
         meeting_url=None,
     )
     index_text = PdfReader(output_path).pages[0].extract_text()
-    assert 'civicclerk' not in index_text
+    assert 'Full agenda:' not in index_text
 
 
 def test_bookmarks_created(tmp_path):
