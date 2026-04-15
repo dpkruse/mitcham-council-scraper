@@ -45,12 +45,13 @@ def test_multiple_inputs_all_included(tmp_path):
         p = str(tmp_path / f'input{i}.pdf')
         make_pdf(p, f'Page {i}')
         paths.append(p)
-    entries = [{'filepath': p, 'item_number': f'10.{i+1}', 'title': f'Doc {i}'}
+    entries = [{'filepath': p, 'item_number': f'10.{i+1}',
+                'item_descriptor': f'Item {i+1} Desc', 'title': f'Doc {i}'}
                for i, p in enumerate(paths)]
     output_path = str(tmp_path / 'combined.pdf')
     combine_pdfs(entries, output_path, 'Meeting', '2026-04-15')
-    # cover page (1) + 3 input pages = 4 minimum
-    assert len(PdfReader(output_path).pages) >= 4
+    # 1 index + 3×(1 cover + 1 doc page) = 7
+    assert len(PdfReader(output_path).pages) >= 7
 
 
 def test_skips_missing_files_gracefully(tmp_path):
@@ -64,3 +65,102 @@ def test_skips_missing_files_gracefully(tmp_path):
     result = combine_pdfs(entries, output_path, 'Meeting', '2026-04-15')
     assert result == output_path
     assert os.path.isfile(output_path)
+
+
+def test_per_doc_cover_pages_inserted(tmp_path):
+    """1 entry, 1-page PDF → index(1) + cover(1) + doc(1) = 3 pages total."""
+    pdf_path = str(tmp_path / 'input.pdf')
+    make_pdf(pdf_path)
+    output_path = str(tmp_path / 'combined.pdf')
+    combine_pdfs(
+        [{'filepath': pdf_path, 'item_number': '10.1',
+          'item_descriptor': 'Test Item', 'title': 'Test Doc'}],
+        output_path, 'Meeting', '2026-04-15',
+    )
+    assert len(PdfReader(output_path).pages) == 3
+
+
+def test_index_page_contains_city_of_mitcham(tmp_path):
+    pdf_path = str(tmp_path / 'input.pdf')
+    make_pdf(pdf_path)
+    output_path = str(tmp_path / 'combined.pdf')
+    combine_pdfs(
+        [{'filepath': pdf_path, 'item_number': '10.1',
+          'item_descriptor': 'Test Item', 'title': 'Test Doc'}],
+        output_path, 'Full Council', '2026-01-27',
+    )
+    index_text = PdfReader(output_path).pages[0].extract_text()
+    assert 'City of Mitcham' in index_text
+
+
+def test_index_page_contains_meeting_url(tmp_path):
+    pdf_path = str(tmp_path / 'input.pdf')
+    make_pdf(pdf_path)
+    output_path = str(tmp_path / 'combined.pdf')
+    url = 'https://mitcham.civicclerk.com.au/web/Player.aspx?id=1353'
+    combine_pdfs(
+        [{'filepath': pdf_path, 'item_number': '10.1',
+          'item_descriptor': '', 'title': 'Test Doc'}],
+        output_path, 'Full Council', '2026-01-27',
+        meeting_url=url,
+    )
+    index_text = PdfReader(output_path).pages[0].extract_text()
+    assert 'mitcham.civicclerk.com.au' in index_text
+
+
+def test_index_page_omits_url_when_none(tmp_path):
+    pdf_path = str(tmp_path / 'input.pdf')
+    make_pdf(pdf_path)
+    output_path = str(tmp_path / 'combined.pdf')
+    combine_pdfs(
+        [{'filepath': pdf_path, 'item_number': '10.1',
+          'item_descriptor': '', 'title': 'Test Doc'}],
+        output_path, 'Full Council', '2026-01-27',
+        meeting_url=None,
+    )
+    index_text = PdfReader(output_path).pages[0].extract_text()
+    assert 'civicclerk' not in index_text
+
+
+def test_bookmarks_created(tmp_path):
+    pdf_path = str(tmp_path / 'input.pdf')
+    make_pdf(pdf_path)
+    output_path = str(tmp_path / 'combined.pdf')
+    combine_pdfs(
+        [{'filepath': pdf_path, 'item_number': '10.1',
+          'item_descriptor': 'Test Item', 'title': 'Test Doc'}],
+        output_path, 'Meeting', '2026-04-15',
+    )
+    assert len(PdfReader(output_path).outline) > 0
+
+
+def test_grouped_items_have_single_heading(tmp_path):
+    """Two entries with the same item_number produce one top-level bookmark."""
+    paths = [str(tmp_path / f'doc{i}.pdf') for i in range(2)]
+    for p in paths:
+        make_pdf(p)
+    entries = [
+        {'filepath': paths[0], 'item_number': '10.4',
+         'item_descriptor': 'Library Opening Hours', 'title': 'Schedule'},
+        {'filepath': paths[1], 'item_number': '10.4',
+         'item_descriptor': 'Library Opening Hours', 'title': 'Slides'},
+    ]
+    output_path = str(tmp_path / 'combined.pdf')
+    combine_pdfs(entries, output_path, 'Meeting', '2026-04-15')
+    outline = PdfReader(output_path).outline
+    top_level = [item for item in outline if not isinstance(item, list)]
+    assert len(top_level) == 1
+    assert '10.4' in top_level[0].title
+
+
+def test_item_descriptor_shown_in_index(tmp_path):
+    pdf_path = str(tmp_path / 'input.pdf')
+    make_pdf(pdf_path)
+    output_path = str(tmp_path / 'combined.pdf')
+    combine_pdfs(
+        [{'filepath': pdf_path, 'item_number': '10.4',
+          'item_descriptor': 'Library Opening Hours', 'title': 'Test Doc'}],
+        output_path, 'Full Council', '2026-01-27',
+    )
+    index_text = PdfReader(output_path).pages[0].extract_text()
+    assert 'Library Opening Hours' in index_text
