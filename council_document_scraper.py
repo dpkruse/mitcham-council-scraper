@@ -97,7 +97,7 @@ class CouncilDocumentScraper:
         pdfs = [f for f in os.listdir(meeting_folder_path) if f.lower().endswith('.pdf')]
         return len(pdfs) > 0
 
-    def scrape_agenda(self, agenda_url, meeting_date=None, use_selenium=True):
+    def scrape_agenda(self, agenda_url, meeting_date=None):
         """Main scraping function using three-stage approach"""
         try:
             self.logger.info("=" * 80)
@@ -443,16 +443,14 @@ def main():
     parser.add_argument('agenda_url', help='Council agenda URL')
     parser.add_argument('--output-folder', default='council_docs', help='Output folder')
     parser.add_argument('--meeting-date', help='Meeting date for folder naming (e.g., 2025-09-09)')
-    parser.add_argument('--no-selenium', action='store_true', help='Disable Selenium (requests only)')
     parser.add_argument('--log-level', default='INFO', help='Logging level (DEBUG, INFO, WARNING, ERROR)')
-    
+
     args = parser.parse_args()
-    
+
     scraper = CouncilDocumentScraper(args.output_folder, args.log_level)
     result = scraper.scrape_agenda(
-        args.agenda_url, 
+        args.agenda_url,
         args.meeting_date,
-        use_selenium=not args.no_selenium
     )
     
     # Output JSON for N8N to consume

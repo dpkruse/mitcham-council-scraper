@@ -33,15 +33,13 @@ types such as Audit Committee and Council Assessment Panel do not).
 
 ## Setup
 
-**Requirements:** Python 3.11+, Google Chrome, ChromeDriver matching your Chrome version
+**Requirements:** Python 3.11+
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 ```
-
-ChromeDriver must be on your PATH or in the project folder.
 
 ## Usage
 
