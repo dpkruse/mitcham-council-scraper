@@ -1,6 +1,7 @@
 # aidocs_html_analyzer_sorted.py
 from bs4 import BeautifulSoup
 import json
+import os
 import re
 import sys
 import urllib.parse
@@ -48,6 +49,10 @@ class AidocsHtmlAnalyzerSorted:
 
     def analyze_file(self, html_file_path):
         """Load HTML from a file and analyse it. Returns True on success."""
+        self.major_items = []
+        self.individual_items = []
+        self.supporting_docs = []
+        self.all_genfile_links = []
         try:
             with open(html_file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -61,6 +66,10 @@ class AidocsHtmlAnalyzerSorted:
 
     def analyze_string(self, html_content):
         """Analyse HTML from a string (convenience method used in tests)."""
+        self.major_items = []
+        self.individual_items = []
+        self.supporting_docs = []
+        self.all_genfile_links = []
         soup = BeautifulSoup(html_content, 'html.parser')
         self.extract_structure(soup)
         self.create_simplified_structure()
@@ -267,18 +276,19 @@ class AidocsHtmlAnalyzerSorted:
             key=lambda x: x.get('index', 0)
         )
         all_items = self.propagate_major_numbers_to_individuals(all_items)
+        supporting_only = self.get_supporting_documents_only()
         self.structure = {
             'items': all_items,
             'all_supporting_docs': self.supporting_docs,
             'all_genfile_links': self.all_genfile_links,
-            'supporting_documents_only': self.get_supporting_documents_only(),
+            'supporting_documents_only': supporting_only,
             'summary': {
                 'total_major_items': len(self.major_items),
                 'total_individual_items': len(self.individual_items),
                 'total_all_items': len(all_items),
                 'total_supporting_doc_containers': len(self.supporting_docs),
                 'total_genfile_links': len(self.all_genfile_links),
-                'total_supporting_documents': len(self.get_supporting_documents_only()),
+                'total_supporting_documents': len(supporting_only),
             },
         }
 
@@ -310,7 +320,8 @@ def main():
     analyzer = AidocsHtmlAnalyzerSorted()
     if not analyzer.analyze_file(sys.argv[1]):
         sys.exit(1)
-    output_json = sys.argv[1].replace('.html', '_simplified_sorted.json')
+    base, _ = os.path.splitext(sys.argv[1])
+    output_json = base + '_simplified_sorted.json'
     analyzer.save_simplified_json(output_json)
     docs = analyzer.extract_supporting_documents_for_scraper()
     print(f"Found {len(docs)} supporting documents")
