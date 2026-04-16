@@ -152,3 +152,27 @@ python scheduled_run.py --url "https://mitcham.civicclerk.com.au/web/Player.aspx
 ```
 
 Use `--force` to re-download even if the folder already exists.
+
+---
+
+## Web interface ⬅️ NEXT: deploy to production
+
+A browser-based interface is available on the `dev` branch, allowing councillors and residents
+to generate supporting documents without installing Python.
+
+**Features:**
+- Auto-discovers upcoming Full Council meetings from the portal
+- Email gate — documents are emailed to the requester (download links valid 24 h)
+- Rate limiting — 5 requests/day for residents; unlimited for `@mitchamcouncil.sa.gov.au`
+- PDF cache via Supabase Storage — repeat requests for the same meeting complete in ~5 seconds
+- Request log in Supabase (not publicly accessible)
+- Hosted free on Render.com; secrets managed via Doppler
+
+**Local dev (requires Doppler configured with project secrets):**
+
+```powershell
+doppler run -- uvicorn app:app --reload
+```
+
+**Deploy:** See `docs/deploy-checklist.md` for the full step-by-step guide
+(Doppler → Supabase → Resend → Render).
